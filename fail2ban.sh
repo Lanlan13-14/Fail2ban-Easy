@@ -16,7 +16,8 @@ check_fail2ban() {
 
 install_fail2ban() {
     echo "🚀 安装 Fail2ban..."
-    sudo apt update && sudo apt install fail2ban -y
+    sudo apt update
+    sudo apt install -y fail2ban python3-systemd python3-sqlite3
     sudo systemctl enable fail2ban
     echo "✅ 安装完成"
 }
