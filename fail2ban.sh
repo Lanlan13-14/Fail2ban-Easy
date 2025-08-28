@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Fail2ban-easy 管理脚本
+# Fail2ban-easy 管理脚本 (systemd backend)
 # 功能：安装/配置/启停/重启/日志/黑名单/查看/修改配置/导出/清空/删除/更新
 
 JAIL_FILE="/etc/fail2ban/jail.local"
-LOG_FILE="/var/log/fail2ban.log"
 SCRIPT_FILE="/usr/local/bin/fail2ban-easy"
 SCRIPT_URL="https://raw.githubusercontent.com/Lanlan13-14/Fail2ban-easy/refs/heads/main/fail2ban.sh"
 
@@ -19,7 +18,7 @@ install_fail2ban() {
     echo "🚀 安装 Fail2ban..."
     sudo apt update && sudo apt install fail2ban -y
     sudo systemctl enable fail2ban
-    echo "✅ 安装完成，配置文件路径：$JAIL_FILE"
+    echo "✅ 安装完成"
 }
 
 configure_fail2ban() {
@@ -38,13 +37,14 @@ configure_fail2ban() {
 
     sudo tee $JAIL_FILE > /dev/null <<EOF
 # =========================================
-# Fail2ban SSH 配置文件
+# Fail2ban SSH 配置文件 (systemd backend)
 # 生成时间: $(date)
 # 注释：
 # bantime  : 封禁时间(秒)
 # findtime : 失败次数统计时间窗口(秒)
 # maxretry : 最大失败次数
 # ignoreip : 忽略的 IP 列表
+# backend  : 使用 systemd 日志
 # sshd     : SSH 服务监控
 # =========================================
 
@@ -53,12 +53,13 @@ bantime  = ${ban_time}
 findtime = 600
 maxretry = ${max_retry}
 ignoreip = 127.0.0.1/8
+backend  = systemd
 
 [sshd]
 enabled  = true
 port     = ${ssh_port}
 filter   = sshd
-logpath  = /var/log/auth.log
+logpath  = journal
 EOF
 
     echo "✅ 配置已生成并保存到 $JAIL_FILE"
@@ -71,7 +72,7 @@ start_fail2ban() { check_fail2ban && sudo systemctl start fail2ban && echo "✅ 
 stop_fail2ban() { check_fail2ban && sudo systemctl stop fail2ban && echo "🛑 Fail2ban 已停止"; }
 restart_fail2ban() { check_fail2ban && sudo systemctl restart fail2ban && echo "🔄 Fail2ban 已重启"; }
 view_status() { check_fail2ban && sudo fail2ban-client status sshd; }
-view_log() { check_fail2ban && echo "📜 查看日志（Ctrl+C 退出）" && sudo tail -f $LOG_FILE; }
+view_log() { check_fail2ban && echo "📜 查看日志（Ctrl+C 退出）" && sudo journalctl -u ssh -f; }
 add_ip() { check_fail2ban && read -p "请输入要封禁的 IP: " ip && [ -n "$ip" ] && sudo fail2ban-client set sshd banip "$ip" && echo "✅ IP $ip 已封禁"; }
 
 remove_ip() {
@@ -161,7 +162,7 @@ while true; do
         13) clear_all_banned ;;
         14) remove_fail2ban ;;
         15) update_script ;;
-        16) echo "👋 退出"; exit 0 ;;
-        *) echo "❌ 无效选择" ;;
+        16) echo "👋 退出"; echo "⚡ 下次使用直接运行: fail2ban-easy"; exit 0 ;;
+        *) echo "❌ 无效选项，请重新选择" ;;
     esac
 done
