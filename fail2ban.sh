@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Fail2ban 管理菜单脚本
-# 功能：安装/配置/启停/重启/日志/黑名单/查看/修改配置/导出/清空/删除
+# Fail2ban-easy 管理脚本
+# 功能：安装/配置/启停/重启/日志/黑名单/查看/修改配置/导出/清空/删除/更新
 
 JAIL_FILE="/etc/fail2ban/jail.local"
 LOG_FILE="/var/log/fail2ban.log"
+SCRIPT_FILE="/usr/local/bin/fail2ban-easy"
+SCRIPT_URL="https://raw.githubusercontent.com/Lanlan13-14/Fail2ban-easy/refs/heads/main/fail2ban.sh"
 
 check_fail2ban() {
     if ! command -v fail2ban-client &>/dev/null; then
@@ -22,17 +24,11 @@ install_fail2ban() {
 
 configure_fail2ban() {
     if ! check_fail2ban; then return; fi
-
-    # 检查配置文件是否存在
     if [ -f "$JAIL_FILE" ]; then
         read -p "配置文件已存在，是否覆盖？(y/N): " overwrite
         overwrite=${overwrite:-N}
-        if [[ ! "$overwrite" =~ ^[Yy]$ ]]; then
-            echo "❌ 已取消生成配置"
-            return
-        fi
+        [[ ! "$overwrite" =~ ^[Yy]$ ]] && echo "❌ 已取消生成配置" && return
     fi
-
     read -p "请输入 SSH 端口 (默认 22): " ssh_port
     ssh_port=${ssh_port:-22}
     read -p "请输入最大失败次数 (默认 5): " max_retry
@@ -66,172 +62,89 @@ logpath  = /var/log/auth.log
 EOF
 
     echo "✅ 配置已生成并保存到 $JAIL_FILE"
-
-    # 提示是否立即启动并应用配置
     read -p "是否立即启动并应用 Fail2ban 配置？(y/N): " start_choice
     start_choice=${start_choice:-N}
-    if [[ "$start_choice" =~ ^[Yy]$ ]]; then
-        sudo systemctl restart fail2ban
-        echo "🔄 Fail2ban 已启动并应用配置"
-    else
-        echo "⚠️ 请手动启动或重启 Fail2ban 以应用配置"
-    fi
+    [[ "$start_choice" =~ ^[Yy]$ ]] && sudo systemctl restart fail2ban && echo "🔄 Fail2ban 已启动并应用配置" || echo "⚠️ 请手动启动或重启 Fail2ban 以应用配置"
 }
 
-start_fail2ban() {
-    if ! check_fail2ban; then return; fi
-    sudo systemctl start fail2ban
-    echo "✅ Fail2ban 已启动"
-}
-
-stop_fail2ban() {
-    if ! check_fail2ban; then return; fi
-    sudo systemctl stop fail2ban
-    echo "🛑 Fail2ban 已停止"
-}
-
-restart_fail2ban() {
-    if ! check_fail2ban; then return; fi
-    sudo systemctl restart fail2ban
-    echo "🔄 Fail2ban 已重启"
-}
-
-view_status() {
-    if ! check_fail2ban; then return; fi
-    sudo fail2ban-client status sshd
-}
-
-view_log() {
-    if ! check_fail2ban; then return; fi
-    echo "📜 查看日志（按 Ctrl+C 退出）"
-    sudo tail -f $LOG_FILE
-}
-
-add_ip() {
-    if ! check_fail2ban; then return; fi
-    read -p "请输入要封禁的 IP: " ip
-    if [ -n "$ip" ]; then
-        sudo fail2ban-client set sshd banip "$ip"
-        echo "✅ IP $ip 已封禁"
-    fi
-}
+start_fail2ban() { check_fail2ban && sudo systemctl start fail2ban && echo "✅ Fail2ban 已启动"; }
+stop_fail2ban() { check_fail2ban && sudo systemctl stop fail2ban && echo "🛑 Fail2ban 已停止"; }
+restart_fail2ban() { check_fail2ban && sudo systemctl restart fail2ban && echo "🔄 Fail2ban 已重启"; }
+view_status() { check_fail2ban && sudo fail2ban-client status sshd; }
+view_log() { check_fail2ban && echo "📜 查看日志（Ctrl+C 退出）" && sudo tail -f $LOG_FILE; }
+add_ip() { check_fail2ban && read -p "请输入要封禁的 IP: " ip && [ -n "$ip" ] && sudo fail2ban-client set sshd banip "$ip" && echo "✅ IP $ip 已封禁"; }
 
 remove_ip() {
     if ! check_fail2ban; then return; fi
     ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*://;s/ //g')
-    if [ -z "$ips" ]; then
-        echo "⚠️ 当前没有封禁的 IP"
-        return
-    fi
-
+    [ -z "$ips" ] && echo "⚠️ 当前没有封禁的 IP" && return
     ip_array=(${ips//,/ })
     echo "当前封禁的 IP："
-    for i in "${!ip_array[@]}"; do
-        echo "$((i+1)) ${ip_array[$i]}"
-    done
+    for i in "${!ip_array[@]}"; do echo "$((i+1)) ${ip_array[$i]}"; done
     echo "输入编号解封，输入 'all' 解封全部，输入 0 返回"
     read -p "请选择操作: " choice
-
     if [[ "$choice" == "all" ]]; then
-        for ip in "${ip_array[@]}"; do
-            sudo fail2ban-client set sshd unbanip "$ip"
-        done
+        for ip in "${ip_array[@]}"; do sudo fail2ban-client set sshd unbanip "$ip"; done
         echo "✅ 已解封所有封禁 IP"
-    elif [[ "$choice" =~ ^[0-9]+$ ]]; then
-        if [ "$choice" -ge 1 ] && [ "$choice" -le "${#ip_array[@]}" ]; then
-            sudo fail2ban-client set sshd unbanip "${ip_array[$((choice-1))]}"
-            echo "✅ IP ${ip_array[$((choice-1))]} 已解封"
-        elif [ "$choice" -eq 0 ]; then
-            return
-        else
-            echo "❌ 编号无效"
-        fi
+    elif [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#ip_array[@]}" ]; then
+        sudo fail2ban-client set sshd unbanip "${ip_array[$((choice-1))]}"
+        echo "✅ IP ${ip_array[$((choice-1))]} 已解封"
     else
         echo "❌ 输入无效"
     fi
 }
 
-view_config() {
-    if [ -f "$JAIL_FILE" ]; then
-        echo "📜 当前配置文件 $JAIL_FILE 内容："
-        sudo cat $JAIL_FILE
-    else
-        echo "⚠️ 配置文件不存在，请先生成配置"
-    fi
-}
+view_config() { [ -f "$JAIL_FILE" ] && sudo cat $JAIL_FILE || echo "⚠️ 配置文件不存在"; }
 
-edit_config() {
-    if ! command -v vim &>/dev/null; then
-        echo "⚠️ 系统未安装 vim，正在安装..."
-        sudo apt update && sudo apt install vim -y
-    fi
-    if [ ! -f "$JAIL_FILE" ]; then
-        echo "⚠️ 配置文件不存在，请先用菜单 [2] 生成配置"
-        return
-    fi
-    sudo vim $JAIL_FILE
-    echo "🔄 编辑完成，请重启 Fail2ban 以应用配置"
-}
+edit_config() { command -v vim >/dev/null || sudo apt update && sudo apt install vim -y; [ -f "$JAIL_FILE" ] && sudo vim $JAIL_FILE || echo "⚠️ 配置文件不存在"; }
 
-export_banned_ips() {
-    if ! check_fail2ban; then return; fi
-    ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*://;s/ //g')
-    if [ -z "$ips" ]; then
-        echo "⚠️ 当前没有封禁的 IP"
-        return
-    fi
-    read -p "请输入导出文件路径(默认 ./banned_ips.txt): " filepath
-    filepath=${filepath:-./banned_ips.txt}
-    echo "$ips" | tr ',' '\n' > "$filepath"
-    echo "✅ 已导出封禁 IP 到 $filepath"
-}
+export_banned_ips() { check_fail2ban || return; ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*://;s/ //g'); [ -z "$ips" ] && echo "⚠️ 当前没有封禁 IP" && return; read -p "请输入导出文件路径(默认 ./banned_ips.txt): " filepath; filepath=${filepath:-./banned_ips.txt}; echo "$ips" | tr ',' '\n' > "$filepath"; echo "✅ 已导出封禁 IP 到 $filepath"; }
 
-clear_all_banned() {
-    if ! check_fail2ban; then return; fi
-    ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*://;s/ //g')
-    if [ -z "$ips" ]; then
-        echo "⚠️ 当前没有封禁 IP"
-        return
-    fi
-    for ip in $(echo $ips | tr ',' ' '); do
-        sudo fail2ban-client set sshd unbanip "$ip"
-    done
-    echo "✅ 已清空所有封禁 IP"
-}
+clear_all_banned() { check_fail2ban || return; ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*://;s/ //g'); [ -z "$ips" ] && echo "⚠️ 当前没有封禁 IP" && return; for ip in $(echo $ips | tr ',' ' '); do sudo fail2ban-client set sshd unbanip "$ip"; done; echo "✅ 已清空所有封禁 IP"; }
 
 remove_fail2ban() {
-    echo "⚠️ 确认删除 Fail2ban 并清理所有配置？(y/n)"
+    echo "⚠️ 确认删除 Fail2ban 并清理所有配置和管理脚本？(y/n)"
     read -r confirm
-    if [[ "$confirm" == "y" ]]; then
-        sudo systemctl stop fail2ban
-        sudo apt purge fail2ban -y
-        sudo rm -f $JAIL_FILE
-        echo "🗑️ Fail2ban 已删除，配置文件已清理"
-    else
-        echo "❌ 已取消删除"
-    fi
+    [[ "$confirm" != "y" ]] && echo "❌ 已取消删除" && return
+    sudo systemctl stop fail2ban
+    sudo apt purge fail2ban -y
+    sudo rm -f $JAIL_FILE
+    [[ -f "$SCRIPT_FILE" ]] && sudo rm -f "$SCRIPT_FILE"
+    echo "🗑️ Fail2ban 和管理脚本已删除"
+    exit 0
+}
+
+update_script() {
+    echo "📦 更新脚本前备份配置..."
+    [ -f "$JAIL_FILE" ] && sudo cp "$JAIL_FILE" "${JAIL_FILE}.bak_$(date +%F_%H%M%S)"
+    echo "🔄 更新脚本..."
+    curl -L "$SCRIPT_URL" -o /tmp/fail2ban-easy && chmod +x /tmp/fail2ban-easy && sudo mv /tmp/fail2ban-easy "$SCRIPT_FILE"
+    echo "✅ 脚本更新完成"
+    read -p "是否立即重载 Fail2ban 配置？(y/N): " reload
+    reload=${reload:-N}
+    [[ "$reload" =~ ^[Yy]$ ]] && sudo systemctl restart fail2ban && echo "🔄 Fail2ban 已重载"
 }
 
 while true; do
-    echo -e "\n========== Fail2ban 管理菜单 =========="
+    echo -e "\n====== Fail2ban-easy 菜单 ======"
     echo "1) 安装 Fail2ban"
-    echo "2) 配置 Fail2ban（向导生成带注释配置）"
+    echo "2) 配置 Fail2ban"
     echo "3) 启动 Fail2ban"
     echo "4) 停止 Fail2ban"
     echo "5) 重启 Fail2ban"
-    echo "6) 查看封禁状态"
+    echo "6) 查看状态"
     echo "7) 查看日志"
     echo "8) 添加黑名单 IP"
-    echo "9) 删除黑名单 IP (单个/全部)"
-    echo "10) 查看当前配置"
-    echo "11) 修改配置文件 (vim)"
+    echo "9) 删除黑名单 IP"
+    echo "10) 查看配置"
+    echo "11) 编辑配置"
     echo "12) 导出封禁 IP"
     echo "13) 清空所有封禁 IP"
     echo "14) 删除 Fail2ban"
-    echo "15) 退出"
-    echo "======================================"
+    echo "15) 更新脚本"
+    echo "16) 退出"
+    echo "================================"
     read -p "请选择操作: " choice
-
     case $choice in
         1) install_fail2ban ;;
         2) configure_fail2ban ;;
@@ -247,7 +160,8 @@ while true; do
         12) export_banned_ips ;;
         13) clear_all_banned ;;
         14) remove_fail2ban ;;
-        15) echo "👋 退出"; exit 0 ;;
-        *) echo "❌ 无效选择";;
+        15) update_script ;;
+        16) echo "👋 退出"; exit 0 ;;
+        *) echo "❌ 无效选择" ;;
     esac
 done
