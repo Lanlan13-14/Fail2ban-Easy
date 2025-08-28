@@ -1,2 +1,14 @@
-# Fail2ban-easy
-利用Fail2ban封禁ip
+## Docker-Easy
+### 快速docker管理工具
+### 1. 安装
+```
+curl -L https://raw.githubusercontent.com/Lanlan13-14/Fail2ban-easy/refs/heads/main/fail2ban.sh -o /tmp/fail2ban-easy \
+&& chmod +x /tmp/fail2ban-easy \
+&& sudo mv /tmp/fail2ban-easy /usr/local/bin/fail2ban-easy
+```
+### 2. 已安装？执行
+```
+sudo fail2ban-easy
+```
+### 3. 卸载
+##### 卸载选项在脚本中已提供
