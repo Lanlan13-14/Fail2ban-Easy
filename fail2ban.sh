@@ -23,6 +23,16 @@ install_fail2ban() {
 configure_fail2ban() {
     if ! check_fail2ban; then return; fi
 
+    # 检查配置文件是否存在
+    if [ -f "$JAIL_FILE" ]; then
+        read -p "配置文件已存在，是否覆盖？(y/N): " overwrite
+        overwrite=${overwrite:-N}
+        if [[ ! "$overwrite" =~ ^[Yy]$ ]]; then
+            echo "❌ 已取消生成配置"
+            return
+        fi
+    fi
+
     read -p "请输入 SSH 端口 (默认 22): " ssh_port
     ssh_port=${ssh_port:-22}
     read -p "请输入最大失败次数 (默认 5): " max_retry
@@ -56,7 +66,16 @@ logpath  = /var/log/auth.log
 EOF
 
     echo "✅ 配置已生成并保存到 $JAIL_FILE"
-    echo "🔄 请重启 Fail2ban 以应用配置"
+
+    # 提示是否立即启动并应用配置
+    read -p "是否立即启动并应用 Fail2ban 配置？(y/N): " start_choice
+    start_choice=${start_choice:-N}
+    if [[ "$start_choice" =~ ^[Yy]$ ]]; then
+        sudo systemctl restart fail2ban
+        echo "🔄 Fail2ban 已启动并应用配置"
+    else
+        echo "⚠️ 请手动启动或重启 Fail2ban 以应用配置"
+    fi
 }
 
 start_fail2ban() {
@@ -142,7 +161,6 @@ view_config() {
 }
 
 edit_config() {
-    # 安装 vim 如果没有
     if ! command -v vim &>/dev/null; then
         echo "⚠️ 系统未安装 vim，正在安装..."
         sudo apt update && sudo apt install vim -y
