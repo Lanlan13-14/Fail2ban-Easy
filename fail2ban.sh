@@ -162,7 +162,7 @@ while true; do
         13) clear_all_banned ;;
         14) remove_fail2ban ;;
         15) update_script ;;
-        16) echo "👋 退出"; echo "⚡ 下次使用直接运行: fail2ban-easy"; exit 0 ;;
+        16) echo "👋 退出"; echo "⚡ 下次使用直接运行: sudo fail2ban-easy"; exit 0 ;;
         *) echo "❌ 无效选项，请重新选择" ;;
     esac
 done
