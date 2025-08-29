@@ -133,23 +133,34 @@ report_to_abuseipdb() {
     # 检查 API Key
     setup_abuse_api_key
 
-    # 获取 Fail2ban 封禁 IP
-    ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*://;s/ //g')
-    if [ -z "$ips" ]; then
+    # 获取 Fail2ban 封禁 IP - 使用更可靠的方法
+    ip_line=$(sudo fail2ban-client status sshd | grep 'Banned IP list')
+    
+    # 使用 sed 提取 IP 部分，去除所有非IP字符
+    ips=$(echo "$ip_line" | sed 's/.*Banned IP list://' | sed 's/[^0-9\. ]//g' | xargs)
+    
+    if [ -z "$ips" ] || [ "$ips" = " " ]; then
         echo "⚠️ 当前没有任何封禁 IP"
         return
     fi
 
     success_count=0
     fail_count=0
-    total_ips=$(echo "$ips" | wc -w)
+
+    # 将空格分隔的 IP 字符串转换为数组
+    read -ra ip_array <<< "$ips"
+    total_ips=${#ip_array[@]}
     current=0
 
     echo "📊 开始处理 $total_ips 个封禁 IP..."
 
-    for ip in $ips; do
+    for ip in "${ip_array[@]}"; do
         ((current++))
-        # 过滤私有 IP (保持原有逻辑不变)
+        
+        # 跳过空值
+        [ -z "$ip" ] && continue
+        
+        # 过滤私有 IP
         if [[ $ip =~ ^(10\.|192\.168\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.|127\.|169\.254\.|224\.) ]]; then
             echo "⏩ 跳过私有 IP: $ip ($current/$total_ips)"
             continue
@@ -157,14 +168,14 @@ report_to_abuseipdb() {
 
         timestamp=$(date -Iseconds)
 
-        # 提交单个 IP 并获取详细响应
+        # 提交单个 IP
         response=$(curl -s -w "\n%{http_code}" -X POST "https://api.abuseipdb.com/api/v2/report" \
             --data-urlencode "ip=$ip" \
             -d "categories=18" \
             --data-urlencode "comment=Detected brute force attempt" \
             --data-urlencode "timestamp=$timestamp" \
             -H "Key: $ABUSE_API_KEY" \
-            -H "Accept: application/json")
+            -H "Accept: application/json" 2>/dev/null)
 
         http_code=$(echo "$response" | tail -n1)
         body=$(echo "$response" | sed '$d')
@@ -177,7 +188,7 @@ report_to_abuseipdb() {
             ((fail_count++))
         fi
 
-        # 添加延迟避免触发 API 限制 (1秒)
+        # 添加延迟避免触发 API 限制
         if [ $current -lt $total_ips ]; then
             sleep 1
         fi
@@ -186,7 +197,8 @@ report_to_abuseipdb() {
     echo "🎉 自动投诉执行完毕"
     echo "   ✅ 成功提交: $success_count 个 IP"
     echo "   ❌ 提交失败: $fail_count 个 IP"
-    echo "   ⏩ 跳过私有: $((total_ips - success_count - fail_count)) 个 IP"
+    skipped=$((total_ips - success_count - fail_count))
+    echo "   ⏩ 跳过私有: $skipped 个 IP"
 }
 
 # 切换自动投诉开关
