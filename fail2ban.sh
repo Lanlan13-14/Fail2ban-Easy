@@ -126,7 +126,8 @@ setup_abuse_api_key() {
 }
 
 report_to_abuseipdb() {
-    load_abuse_config
+    # 读取自动投诉配置
+    [ -f "$ABUSE_AUTO_REPORT_FILE" ] && source "$ABUSE_AUTO_REPORT_FILE"
     [ "$ABUSE_ENABLED" -ne 1 ] && echo "⚠️ 自动投诉功能未开启" && return
 
     # 检查 API Key
@@ -163,7 +164,7 @@ report_to_abuseipdb() {
              >/dev/null 2>&1
         echo "[+] 已提交投诉: $ip"
     done
-    echo "✅ 自动投诉执行完毕，共提交 ${#public_ips[@]} 个 IP"
+    echo "✅ 自动投诉执行完毕，共提交 $(echo $public_ips | wc -w) 个 IP"
 }
 
 # 切换自动投诉开关
