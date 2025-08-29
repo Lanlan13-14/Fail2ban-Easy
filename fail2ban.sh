@@ -231,14 +231,35 @@ remove_fail2ban() {
 }
 
 update_script() {
-    echo "📦 更新脚本前备份配置..."
-    [ -f "$JAIL_FILE" ] && sudo cp "$JAIL_FILE" "${JAIL_FILE}.bak_$(date +%F_%H%M%S)"
-    echo "🔄 更新脚本..."
-    curl -L "$SCRIPT_URL" -o /tmp/fail2ban-easy && chmod +x /tmp/fail2ban-easy && sudo mv /tmp/fail2ban-easy "$SCRIPT_FILE"
-    echo "✅ 脚本更新完成"
-    read -p "是否立即重载 Fail2ban 配置？(y/N): " reload
+    echo "📦 备份当前脚本..."
+    backup_file="${SCRIPT_FILE}.bak_$(date +%F_%H%M%S)"
+    sudo cp "$SCRIPT_FILE" "$backup_file"
+
+    echo "🔄 下载新版本..."
+    tmp_file="/tmp/fail2ban-easy.new"
+    curl -L "$SCRIPT_URL" -o "$tmp_file" && chmod +x "$tmp_file"
+
+    # 语法检查
+    if ! bash -n "$tmp_file"; then
+        echo "❌ 新脚本语法错误，已停止更新。"
+        rm -f "$tmp_file"
+        return
+    fi
+
+    # 尝试运行一次，捕获错误
+    if ! bash -c "$tmp_file --version" &>/dev/null; then
+        echo "❌ 新脚本执行失败，自动回滚到旧版本"
+        rm -f "$tmp_file"
+        return
+    fi
+
+    # 替换原脚本
+    sudo mv "$tmp_file" "$SCRIPT_FILE"
+    echo "✅ 新脚本更新成功"
+
+    read -p "是否立即退出并运行新版本脚本？(y/N): " reload
     reload=${reload:-N}
-    [[ "$reload" =~ ^[Yy]$ ]] && sudo systemctl restart fail2ban && echo "🔄 Fail2ban 已重载"
+    [[ "$reload" =~ ^[Yy]$ ]] && exec sudo "$SCRIPT_FILE" "$@" || echo "⚡ 请手动重新执行脚本以使用新版本"
 }
 
 # 支持命令行参数 --auto-report
