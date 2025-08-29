@@ -141,30 +141,36 @@ report_to_abuseipdb() {
     fi
 
     # 过滤私有 IP
-    public_ips=""
+    public_ips=()
     for ip in $ips; do
         if ! [[ $ip =~ ^(10\.|192\.168\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.|127\.|169\.254\.|224\.) ]]; then
-            public_ips="$public_ips $ip"
+            public_ips+=("$ip")
         fi
     done
 
-    if [ -z "$public_ips" ]; then
+    if [ ${#public_ips[@]} -eq 0 ]; then
         echo "⚠️ 没有公网封禁 IP 可提交"
         return
     fi
 
     # 提交到 AbuseIPDB
-    for ip in $public_ips; do
-        curl -s -X POST "https://api.abuseipdb.com/api/v2/report" \
-             -H "Key: $ABUSE_API_KEY" \
-             -H "Accept: application/json" \
-             --data-urlencode "ip=$ip" \
-             --data-urlencode "categories=18" \
-             --data-urlencode "comment=Detected brute force attempt" \
-             >/dev/null 2>&1
-        echo "[+] 已提交投诉: $ip"
+    count=0
+    for ip in "${public_ips[@]}"; do
+        response=$(curl -s -o /dev/null -w "%{http_code}" -X POST "https://api.abuseipdb.com/api/v2/report" \
+            -H "Key: $ABUSE_API_KEY" \
+            -H "Accept: application/json" \
+            --data-urlencode "ip=$ip" \
+            --data-urlencode "categories=18" \
+            --data-urlencode "comment=Detected brute force attempt")
+        if [ "$response" == "200" ] || [ "$response" == "201" ]; then
+            echo "[+] 已提交投诉: $ip"
+            ((count++))
+        else
+            echo "❌ 提交失败: $ip (HTTP $response)"
+        fi
     done
-    echo "✅ 自动投诉执行完毕，共提交 $(echo $public_ips | wc -w) 个 IP"
+
+    echo "✅ 自动投诉执行完毕，共成功提交 $count 个 IP"
 }
 
 # 切换自动投诉开关
