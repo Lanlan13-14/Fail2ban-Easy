@@ -285,10 +285,10 @@ while true; do
     echo "13) 清空所有封禁 IP"
     echo "14) 删除 Fail2ban"
     echo "15) 更新脚本"
-    echo "17) 自动投诉设置 (开启/关闭)"
-    echo "18) 设置每天 2 点自动投诉任务"
-    echo "19) 设置/修改 AbuseIPDB API Key"
-    echo "16) 退出"
+    echo "16) 自动投诉设置 (开启/关闭)"
+    echo "17) 设置每天 2 点自动投诉任务"
+    echo "18) 设置/修改 AbuseIPDB API Key"
+    echo "19) 退出"
     echo "================================"
     read -p "请选择操作: " choice
     case $choice in
@@ -307,10 +307,10 @@ while true; do
         13) clear_all_banned ;;
         14) remove_fail2ban ;;
         15) update_script ;;
-        17) toggle_abuse_report ;;
-        18) setup_abuse_cron ;;
-        19) setup_abuse_api_key ;;
-        16) echo "👋 退出"; echo "⚡ 下次使用直接运行: sudo fail2ban-easy"; exit 0 ;;
+        16) toggle_abuse_report ;;
+        17) setup_abuse_cron ;;
+        18) setup_abuse_api_key ;;
+        19) echo "👋 退出"; echo "⚡ 下次使用直接运行: sudo fail2ban-easy"; exit 0 ;;
         *) echo "❌ 无效选项，请重新选择" ;;
     esac
 done
