@@ -157,6 +157,42 @@ report_to_abuseipdb() {
     done
 }
 
+# 切换自动投诉开关
+toggle_abuse_report() {
+    # 先加载配置
+    [ -f "$ABUSE_AUTO_REPORT_FILE" ] && source "$ABUSE_AUTO_REPORT_FILE"
+
+    ABUSE_ENABLED=$((1-ABUSE_ENABLED))  # 0->1 或 1->0
+    echo "ABUSE_ENABLED=$ABUSE_ENABLED" > "$ABUSE_AUTO_REPORT_FILE"
+    echo "ABUSE_API_KEY=$ABUSE_API_KEY" >> "$ABUSE_AUTO_REPORT_FILE"
+
+    if [ "$ABUSE_ENABLED" -eq 1 ]; then
+        echo "✅ 自动投诉已开启"
+    else
+        echo "⚠️ 自动投诉已关闭"
+    fi
+}
+
+# 设置每天凌晨 2 点自动投诉定时任务
+setup_abuse_cron() {
+    [ -f "$ABUSE_AUTO_REPORT_FILE" ] || setup_abuse_api_key
+
+    # 删除原有 cron
+    (crontab -l 2>/dev/null | grep -v "$SCRIPT_FILE") | crontab -
+
+    # 添加每天 2 点自动执行
+    (crontab -l 2>/dev/null; echo "0 2 * * * sudo $SCRIPT_FILE --auto-report") | crontab -
+    echo "⏰ 每天凌晨 2 点自动投诉任务已设置"
+}
+
+# 处理命令行参数 --auto-report
+if [ "$1" == "--auto-report" ]; then
+    report_to_abuseipdb
+    exit 0
+fi
+
+
+
 remove_fail2ban() {
     echo "⚠️ 确认删除 Fail2ban 并清理所有配置、管理脚本及自动投诉配置？(y/n)"
     read -r confirm
@@ -194,6 +230,12 @@ update_script() {
     reload=${reload:-N}
     [[ "$reload" =~ ^[Yy]$ ]] && sudo systemctl restart fail2ban && echo "🔄 Fail2ban 已重载"
 }
+
+# 支持命令行参数 --auto-report
+if [ "$1" == "--auto-report" ]; then
+    report_to_abuseipdb
+    exit 0
+fi
 
 while true; do
     echo -e "\n====== Fail2ban-easy 菜单 ======"
