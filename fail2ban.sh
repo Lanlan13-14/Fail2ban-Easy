@@ -90,19 +90,38 @@ add_ip() { check_fail2ban && read -p "请输入要封禁的 IP: " ip && [ -n "$i
 
 remove_ip() {
     if ! check_fail2ban; then return; fi
-    ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*://;s/ //g')
+
+    ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*: //')
     [ -z "$ips" ] && echo "⚠️ 当前没有封禁的 IP" && return
-    ip_array=(${ips//,/ })
+
+    ip_array=($ips)
+
     echo "当前封禁的 IP："
-    for i in "${!ip_array[@]}"; do echo "$((i+1)) ${ip_array[$i]}"; done
-    echo "输入编号解封，输入 'all' 解封全部，输入 0 返回"
+    for i in "${!ip_array[@]}"; do
+        echo "$((i+1)) ${ip_array[$i]}"
+    done
+
+    echo "输入编号解封（可用空格分隔多个编号），输入 'all' 解封全部，输入 0 返回"
     read -p "请选择操作: " choice
+
     if [[ "$choice" == "all" ]]; then
-        for ip in "${ip_array[@]}"; do sudo fail2ban-client set sshd unbanip "$ip"; done
+        for ip in "${ip_array[@]}"; do
+            sudo fail2ban-client set sshd unbanip "$ip"
+        done
         echo "✅ 已解封所有封禁 IP"
-    elif [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#ip_array[@]}" ]; then
-        sudo fail2ban-client set sshd unbanip "${ip_array[$((choice-1))]}"
-        echo "✅ IP ${ip_array[$((choice-1))]} 已解封"
+
+    elif [[ "$choice" =~ ^[0-9\ ]+$ ]]; then
+        for num in $choice; do
+            if [ "$num" -ge 1 ] && [ "$num" -le "${#ip_array[@]}" ]; then
+                sudo fail2ban-client set sshd unbanip "${ip_array[$((num-1))]}"
+                echo "✅ IP ${ip_array[$((num-1))]} 已解封"
+            elif [ "$num" -eq 0 ]; then
+                echo "返回"
+                return
+            else
+                echo "❌ 编号 $num 无效"
+            fi
+        done
     else
         echo "❌ 输入无效"
     fi
