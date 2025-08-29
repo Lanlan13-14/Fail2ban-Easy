@@ -65,7 +65,7 @@ configure_fail2ban() {
 bantime  = ${ban_time}
 findtime = 600
 maxretry = ${max_retry}
-ignoreip = 127.0.0.1/8
+ignoreip = 127.0.0.1/8 ::1
 backend  = systemd
 
 [sshd]
