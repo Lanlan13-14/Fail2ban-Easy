@@ -126,7 +126,10 @@ setup_abuse_api_key() {
 }
 
 report_to_abuseipdb() {
-    load_abuse_config
+    # 加载配置文件
+    [ -f "$ABUSE_AUTO_REPORT_FILE" ] && source "$ABUSE_AUTO_REPORT_FILE"
+    
+    # 检查是否开启自动投诉
     [ "$ABUSE_ENABLED" -ne 1 ] && return
 
     # 检查 API Key
