@@ -126,51 +126,46 @@ setup_abuse_api_key() {
 }
 
 report_to_abuseipdb() {
-    # 读取自动投诉配置
     [ -f "$ABUSE_AUTO_REPORT_FILE" ] && source "$ABUSE_AUTO_REPORT_FILE"
     [ "$ABUSE_ENABLED" -ne 1 ] && echo "⚠️ 自动投诉功能未开启" && return
 
-    # 检查 API Key
     setup_abuse_api_key
 
-    # 获取 Fail2ban 封禁 IP
     ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*://;s/ //g')
     if [ -z "$ips" ]; then
         echo "⚠️ 当前没有任何封禁 IP"
         return
     fi
 
-    # 过滤私有 IP
-    public_ips=()
+    success_count=0
+    fail_count=0
+
     for ip in $ips; do
-        if ! [[ $ip =~ ^(10\.|192\.168\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.|127\.|169\.254\.|224\.) ]]; then
-            public_ips+=("$ip")
+        # 过滤私有 IP
+        if [[ $ip =~ ^(10\.|192\.168\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.|127\.|169\.254\.|224\.) ]]; then
+            continue
         fi
-    done
 
-    if [ ${#public_ips[@]} -eq 0 ]; then
-        echo "⚠️ 没有公网封禁 IP 可提交"
-        return
-    fi
-
-    # 提交到 AbuseIPDB
-    count=0
-    for ip in "${public_ips[@]}"; do
-        response=$(curl -s -o /dev/null -w "%{http_code}" -X POST "https://api.abuseipdb.com/api/v2/report" \
-            -H "Key: $ABUSE_API_KEY" \
-            -H "Accept: application/json" \
+        timestamp=$(date -Iseconds)
+        response=$(curl -s -w "%{http_code}" -o /tmp/abuse_response.json \
+            -X POST "https://api.abuseipdb.com/api/v2/report" \
             --data-urlencode "ip=$ip" \
-            --data-urlencode "categories=18" \
-            --data-urlencode "comment=Detected brute force attempt")
-        if [ "$response" == "200" ] || [ "$response" == "201" ]; then
+            -d "categories=18" \
+            --data-urlencode "comment=Detected brute force attempt" \
+            --data-urlencode "timestamp=$timestamp" \
+            -H "Key: $ABUSE_API_KEY" \
+            -H "Accept: application/json")
+
+        if [[ $response == "200" ]]; then
             echo "[+] 已提交投诉: $ip"
-            ((count++))
+            ((success_count++))
         else
             echo "❌ 提交失败: $ip (HTTP $response)"
+            ((fail_count++))
         fi
     done
 
-    echo "✅ 自动投诉执行完毕，共成功提交 $count 个 IP"
+    echo "✅ 自动投诉执行完毕，共成功提交 $success_count 个 IP，失败 $fail_count 个 IP"
 }
 
 # 切换自动投诉开关
