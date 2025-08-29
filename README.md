@@ -11,3 +11,9 @@ sudo fail2ban-easy
 ```
 ### 3. 卸载
 ##### 卸载选项在脚本中已提供
+
+Tips:
+**手动上报**
+```
+sudo /usr/local/bin/fail2ban-easy --auto-report
+```
