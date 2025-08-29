@@ -91,14 +91,15 @@ add_ip() { check_fail2ban && read -p "请输入要封禁的 IP: " ip && [ -n "$i
 remove_ip() {
     if ! check_fail2ban; then return; fi
 
-    ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*: //')
+    # 只提取 IP
+    ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}')
     [ -z "$ips" ] && echo "⚠️ 当前没有封禁的 IP" && return
 
     ip_array=($ips)
 
     echo "当前封禁的 IP："
     for i in "${!ip_array[@]}"; do
-        echo "$((i+1)) ${ip_array[$i]}"
+        echo "[$((i+1))] ${ip_array[$i]}"
     done
 
     echo "输入编号解封（可用空格分隔多个编号），输入 'all' 解封全部，输入 0 返回"
@@ -124,6 +125,18 @@ remove_ip() {
         done
     else
         echo "❌ 输入无效"
+    fi
+
+    # 显示解封后的最新封禁 IP
+    new_ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}')
+    if [ -z "$new_ips" ]; then
+        echo "当前没有封禁的 IP"
+    else
+        echo "当前封禁的 IP："
+        new_ip_array=($new_ips)
+        for i in "${!new_ip_array[@]}"; do
+            echo "[$((i+1))] ${new_ip_array[$i]}"
+        done
     fi
 }
 
