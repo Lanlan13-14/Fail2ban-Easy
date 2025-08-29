@@ -19,10 +19,19 @@ check_fail2ban() {
 }
 
 install_fail2ban() {
-    echo "🚀 安装 Fail2ban..."
-    sudo apt update && sudo apt install -y fail2ban python3-systemd sqlite3
+    echo "🚀 安装 Fail2ban 及依赖..."
+    # 更新并安装 Fail2ban 及必要依赖
+    sudo apt update && sudo apt install -y fail2ban python3-systemd sqlite3 systemd-journal-remote
+
+    # 确保 systemd journal 持久化
+    sudo mkdir -p /var/log/journal
+    sudo systemd-tmpfiles --create --prefix /var/log/journal
+    sudo systemctl restart systemd-journald
+
+    # 启用 Fail2ban 服务
     sudo systemctl enable fail2ban
-    echo "✅ Fail2ban 安装并启用完成"
+
+    echo "✅ Fail2ban 安装并启用完成，systemd journal 已启用"
 }
 
 configure_fail2ban() {
