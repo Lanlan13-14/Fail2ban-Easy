@@ -5,6 +5,10 @@
 JAIL_FILE="/etc/fail2ban/jail.local"
 SCRIPT_FILE="/usr/local/bin/fail2ban-easy"
 SCRIPT_URL="https://raw.githubusercontent.com/Lanlan13-14/Fail2ban-easy/refs/heads/main/fail2ban.sh"
+# 自动滥用投诉配置文件
+ABUSE_AUTO_REPORT_FILE="/etc/fail2ban/auto_report.conf"
+ABUSE_API_KEY=""        # 保存用户输入的 API Key
+ABUSE_ENABLED=0         # 默认关闭
 
 check_fail2ban() {
     if ! command -v fail2ban-client &>/dev/null; then
@@ -103,15 +107,80 @@ export_banned_ips() { check_fail2ban || return; ips=$(sudo fail2ban-client statu
 
 clear_all_banned() { check_fail2ban || return; ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*://;s/ //g'); [ -z "$ips" ] && echo "⚠️ 当前没有封禁 IP" && return; for ip in $(echo $ips | tr ',' ' '); do sudo fail2ban-client set sshd unbanip "$ip"; done; echo "✅ 已清空所有封禁 IP"; }
 
+setup_abuse_api_key() {
+    # 如果配置文件存在则加载
+    [ -f "$ABUSE_AUTO_REPORT_FILE" ] && source "$ABUSE_AUTO_REPORT_FILE"
+
+    # 如果没有 API Key，提示用户输入
+    if [ -z "$ABUSE_API_KEY" ]; then
+        echo "⚠️ 检测到未配置 AbuseIPDB API Key"
+        echo "请前往 https://www.abuseipdb.com/ 注册并获取 API Key"
+        read -p "请输入你的 AbuseIPDB API Key: " key
+        ABUSE_API_KEY="$key"
+        # 保存配置
+        mkdir -p "$(dirname "$ABUSE_AUTO_REPORT_FILE")"
+        echo "ABUSE_ENABLED=$ABUSE_ENABLED" > "$ABUSE_AUTO_REPORT_FILE"
+        echo "ABUSE_API_KEY=$ABUSE_API_KEY" >> "$ABUSE_AUTO_REPORT_FILE"
+        echo "✅ API Key 已保存到 $ABUSE_AUTO_REPORT_FILE"
+    fi
+}
+
+report_to_abuseipdb() {
+    load_abuse_config
+    [ "$ABUSE_ENABLED" -ne 1 ] && return
+
+    # 检查 API Key
+    setup_abuse_api_key
+
+    # 获取 Banned IP
+    ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*://;s/ //g')
+    [ -z "$ips" ] && echo "⚠️ 没有封禁 IP" && return
+
+    # 过滤私有 IP
+    public_ips=""
+    for ip in $ips; do
+        if ! [[ $ip =~ ^(10\.|192\.168\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.|127\.|169\.254\.|224\.) ]]; then
+            public_ips="$public_ips $ip"
+        fi
+    done
+
+    # 提交
+    for ip in $public_ips; do
+        curl -s -X POST "https://api.abuseipdb.com/api/v2/report" \
+             -H "Key: $ABUSE_API_KEY" \
+             -H "Accept: application/json" \
+             --data-urlencode "ip=$ip" \
+             --data-urlencode "categories=18" \
+             --data-urlencode "comment=Detected brute force attempt" \
+             >/dev/null 2>&1
+        echo "[+] 已提交投诉: $ip"
+    done
+}
+
 remove_fail2ban() {
-    echo "⚠️ 确认删除 Fail2ban 并清理所有配置和管理脚本？(y/n)"
+    echo "⚠️ 确认删除 Fail2ban 并清理所有配置、管理脚本及自动投诉配置？(y/n)"
     read -r confirm
     [[ "$confirm" != "y" ]] && echo "❌ 已取消删除" && return
+
+    # 停止 Fail2ban
     sudo systemctl stop fail2ban
+
+    # 卸载 Fail2ban
     sudo apt purge fail2ban -y
-    sudo rm -f $JAIL_FILE
+
+    # 删除 Fail2ban 配置文件
+    sudo rm -f "$JAIL_FILE"
+
+    # 删除管理脚本
     [[ -f "$SCRIPT_FILE" ]] && sudo rm -f "$SCRIPT_FILE"
-    echo "🗑️ Fail2ban 和管理脚本已删除"
+
+    # 删除自动投诉配置文件
+    [[ -f "$ABUSE_AUTO_REPORT_FILE" ]] && sudo rm -f "$ABUSE_AUTO_REPORT_FILE"
+
+    # 删除与脚本相关的 cron 定时任务
+    (crontab -l 2>/dev/null | grep -v "$SCRIPT_FILE") | crontab -
+
+    echo "🗑️ Fail2ban、管理脚本及自动投诉配置已删除"
     exit 0
 }
 
@@ -143,6 +212,9 @@ while true; do
     echo "13) 清空所有封禁 IP"
     echo "14) 删除 Fail2ban"
     echo "15) 更新脚本"
+    echo "17) 自动投诉设置 (开启/关闭)"
+    echo "18) 设置每天 2 点自动投诉任务"
+    echo "19) 设置/修改 AbuseIPDB API Key"
     echo "16) 退出"
     echo "================================"
     read -p "请选择操作: " choice
@@ -162,6 +234,9 @@ while true; do
         13) clear_all_banned ;;
         14) remove_fail2ban ;;
         15) update_script ;;
+        17) toggle_abuse_report ;;
+        18) setup_abuse_cron ;;
+        19) setup_abuse_api_key ;;
         16) echo "👋 退出"; echo "⚡ 下次使用直接运行: sudo fail2ban-easy"; exit 0 ;;
         *) echo "❌ 无效选项，请重新选择" ;;
     esac
