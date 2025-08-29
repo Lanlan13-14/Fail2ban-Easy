@@ -126,18 +126,18 @@ setup_abuse_api_key() {
 }
 
 report_to_abuseipdb() {
-    # 加载配置文件
-    [ -f "$ABUSE_AUTO_REPORT_FILE" ] && source "$ABUSE_AUTO_REPORT_FILE"
-    
-    # 检查是否开启自动投诉
-    [ "$ABUSE_ENABLED" -ne 1 ] && return
+    load_abuse_config
+    [ "$ABUSE_ENABLED" -ne 1 ] && echo "⚠️ 自动投诉功能未开启" && return
 
     # 检查 API Key
     setup_abuse_api_key
 
-    # 获取 Banned IP
+    # 获取 Fail2ban 封禁 IP
     ips=$(sudo fail2ban-client status sshd | grep 'Banned IP list' | sed 's/.*://;s/ //g')
-    [ -z "$ips" ] && echo "⚠️ 没有封禁 IP" && return
+    if [ -z "$ips" ]; then
+        echo "⚠️ 当前没有任何封禁 IP"
+        return
+    fi
 
     # 过滤私有 IP
     public_ips=""
@@ -147,7 +147,12 @@ report_to_abuseipdb() {
         fi
     done
 
-    # 提交
+    if [ -z "$public_ips" ]; then
+        echo "⚠️ 没有公网封禁 IP 可提交"
+        return
+    fi
+
+    # 提交到 AbuseIPDB
     for ip in $public_ips; do
         curl -s -X POST "https://api.abuseipdb.com/api/v2/report" \
              -H "Key: $ABUSE_API_KEY" \
@@ -158,6 +163,7 @@ report_to_abuseipdb() {
              >/dev/null 2>&1
         echo "[+] 已提交投诉: $ip"
     done
+    echo "✅ 自动投诉执行完毕，共提交 ${#public_ips[@]} 个 IP"
 }
 
 # 切换自动投诉开关
