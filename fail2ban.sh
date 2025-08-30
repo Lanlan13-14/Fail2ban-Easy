@@ -4,7 +4,7 @@
 
 JAIL_FILE="/etc/fail2ban/jail.local"
 SCRIPT_FILE="/usr/local/bin/fail2ban-easy"
-SCRIPT_URL="https://raw.githubusercontent.com/Lanlan13-14/Fail2ban-easy/refs/heads/main/fail2ban.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/Lanlan13-14/Fail2ban-Easy/refs/heads/main/fail2ban.sh"
 # 自动滥用投诉配置文件
 ABUSE_AUTO_REPORT_FILE="/etc/fail2ban/auto_report.conf"
 ABUSE_API_KEY=""        # 保存用户输入的 API Key
