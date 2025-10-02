@@ -176,10 +176,10 @@ report_to_abuseipdb() {
 
     # 获取 Fail2ban 封禁 IP - 使用更可靠的方法
     ip_line=$(sudo fail2ban-client status sshd | grep 'Banned IP list')
-    
+
     # 使用 sed 提取 IP 部分，去除所有非IP字符
     ips=$(echo "$ip_line" | sed 's/.*Banned IP list://' | sed 's/[^0-9\. ]//g' | xargs)
-    
+
     if [ -z "$ips" ] || [ "$ips" = " " ]; then
         echo "⚠️ 当前没有任何封禁 IP"
         return
@@ -197,10 +197,10 @@ report_to_abuseipdb() {
 
     for ip in "${ip_array[@]}"; do
         ((current++))
-        
+
         # 跳过空值
         [ -z "$ip" ] && continue
-        
+
         # 过滤私有 IP
         if [[ $ip =~ ^(10\.|192\.168\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.|127\.|169\.254\.|224\.) ]]; then
             echo "⏩ 跳过私有 IP: $ip ($current/$total_ips)"
@@ -276,8 +276,6 @@ if [ "$1" == "--auto-report" ]; then
     exit 0
 fi
 
-
-
 remove_fail2ban() {
     echo "⚠️ 确认删除 Fail2ban 并清理所有配置、管理脚本及自动投诉配置？(y/n)"
     read -r confirm
@@ -307,26 +305,73 @@ remove_fail2ban() {
 
 update_script() {
     echo "📦 更新脚本前备份当前配置和脚本..."
-    [ -f "$JAIL_FILE" ] && sudo cp "$JAIL_FILE" "${JAIL_FILE}.bak_$(date +%F_%H%M%S)"
-    [ -f "$SCRIPT_FILE" ] && sudo cp "$SCRIPT_FILE" "${SCRIPT_FILE}.bak_$(date +%F_%H%M%S)"
+    local jail_backup=""
+    local script_backup=""
+    local timestamp=$(date +%F_%H%M%S)
+    
+    # 备份配置文件
+    if [ -f "$JAIL_FILE" ]; then
+        jail_backup="${JAIL_FILE}.bak_${timestamp}"
+        sudo cp "$JAIL_FILE" "$jail_backup"
+        echo "✅ 配置文件已备份到: $jail_backup"
+    fi
+    
+    # 备份脚本文件
+    if [ -f "$SCRIPT_FILE" ]; then
+        script_backup="${SCRIPT_FILE}.bak_${timestamp}"
+        sudo cp "$SCRIPT_FILE" "$script_backup"
+        echo "✅ 脚本文件已备份到: $script_backup"
+    fi
 
     echo "🔄 下载新脚本..."
     TMP_FILE="/tmp/fail2ban-easy.new"
-    curl -L "$SCRIPT_URL" -o "$TMP_FILE"
+    if ! curl -L "$SCRIPT_URL" -o "$TMP_FILE"; then
+        echo "❌ 下载新脚本失败，更新已取消"
+        return 1
+    fi
+
     chmod +x "$TMP_FILE"
 
     # 语法检查
     if bash -n "$TMP_FILE"; then
         echo "✅ 新脚本语法检查通过，应用更新..."
         sudo mv "$TMP_FILE" "$SCRIPT_FILE"
+        
+        # 配置正确，删除备份文件
+        if [ -n "$jail_backup" ] && [ -f "$jail_backup" ]; then
+            sudo rm -f "$jail_backup"
+            echo "✅ 配置正确，已删除备份文件: $jail_backup"
+        fi
+        if [ -n "$script_backup" ] && [ -f "$script_backup" ]; then
+            sudo rm -f "$script_backup"
+            echo "✅ 配置正确，已删除备份文件: $script_backup"
+        fi
+        
+        echo "🎉 脚本更新成功！"
         read -p "是否立即重启 Fail2ban 并重新运行脚本？(y/N): " reload
         reload=${reload:-N}
         if [[ "$reload" =~ ^[Yy]$ ]]; then
+            sudo systemctl restart fail2ban
             exec sudo "$SCRIPT_FILE"
         fi
     else
-        echo "❌ 新脚本存在语法错误，更新已取消，保持旧版本。"
+        echo "❌ 新脚本存在语法错误，自动回滚备份..."
+        
+        # 回滚配置文件
+        if [ -n "$jail_backup" ] && [ -f "$jail_backup" ]; then
+            sudo mv "$jail_backup" "$JAIL_FILE"
+            echo "✅ 已回滚配置文件: $JAIL_FILE"
+        fi
+        
+        # 回滚脚本文件
+        if [ -n "$script_backup" ] && [ -f "$script_backup" ]; then
+            sudo mv "$script_backup" "$SCRIPT_FILE"
+            echo "✅ 已回滚脚本文件: $SCRIPT_FILE"
+        fi
+        
+        # 删除临时文件
         rm -f "$TMP_FILE"
+        echo "❌ 更新失败，已自动回滚到之前版本"
     fi
 }
 
@@ -338,25 +383,25 @@ fi
 
 while true; do
     echo -e "\n====== Fail2ban-easy 菜单 ======"
-    echo "1) 安装 Fail2ban"
-    echo "2) 配置 Fail2ban"
-    echo "3) 启动 Fail2ban"
-    echo "4) 停止 Fail2ban"
-    echo "5) 重启 Fail2ban"
-    echo "6) 查看状态"
-    echo "7) 查看日志"
-    echo "8) 添加黑名单 IP"
-    echo "9) 删除黑名单 IP"
-    echo "10) 查看配置"
-    echo "11) 编辑配置"
-    echo "12) 导出封禁 IP"
-    echo "13) 清空所有封禁 IP"
-    echo "14) 删除 Fail2ban"
-    echo "15) 更新脚本"
-    echo "16) 自动投诉设置 (开启/关闭)"
-    echo "17) 设置每天 2 点自动投诉任务"
-    echo "18) 设置/修改 AbuseIPDB API Key"
-    echo "19) 退出"
+    echo "[1] 安装 Fail2ban"
+    echo "[2] 配置 Fail2ban"
+    echo "[3] 启动 Fail2ban"
+    echo "[4] 停止 Fail2ban"
+    echo "[5] 重启 Fail2ban"
+    echo "[6] 查看状态"
+    echo "[7] 查看日志"
+    echo "[8] 添加黑名单 IP"
+    echo "[9] 删除黑名单 IP"
+    echo "[10] 查看配置"
+    echo "[11] 编辑配置"
+    echo "[12] 导出封禁 IP"
+    echo "[13] 清空所有封禁 IP"
+    echo "[14] 删除 Fail2ban"
+    echo "[15] 更新脚本"
+    echo "[16] 自动投诉设置 (开启/关闭)"
+    echo "[17] 设置每天 2 点自动投诉任务"
+    echo "[18] 设置/修改 AbuseIPDB API Key"
+    echo "[19] 退出"
     echo "================================"
     read -p "请选择操作: " choice
     case $choice in
